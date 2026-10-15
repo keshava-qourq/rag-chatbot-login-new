@@ -157,6 +157,20 @@ const paths: Record<string, React.ReactNode> = {
       <circle cx="19" cy="12" r="1.5" />
     </>
   ),
+  Eye: (
+    <>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  EyeOff: (
+    <>
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <path d="M6.61 6.61A18.5 18.5 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61" />
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <path d="M1 1l22 22" />
+    </>
+  ),
 };
 
 export const Icons: Record<string, React.FC<IconProps>> = Object.fromEntries(
@@ -165,7 +179,7 @@ export const Icons: Record<string, React.FC<IconProps>> = Object.fromEntries(
     function NamedIcon(props: IconProps) {
       return <Icon {...props}>{node}</Icon>;
     },
-  ])
+  ]),
 );
 
 export const ICON_NAMES = Object.keys(paths);

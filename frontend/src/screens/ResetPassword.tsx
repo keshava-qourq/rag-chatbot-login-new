@@ -7,6 +7,7 @@ import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
 import { useNavigate } from "@/lib/navigate";
+import { PasswordField } from "@/lib/passwordField";
 import { ApiError, forgotPassword, resetPassword } from "@/lib/authApi";
 
 const { Button, Input, Label, Checkbox, Badge, Separator } = UI;
@@ -84,7 +85,6 @@ export default function Screen() {
 
   const [pw, setPw] = React.useState("");
   const [pw2, setPw2] = React.useState("");
-  const [showPw, setShowPw] = React.useState(false);
   const [pwError, setPwError] = React.useState(null);
   const [pw2Error, setPw2Error] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -103,21 +103,17 @@ export default function Screen() {
     pw.length === 0
       ? "Not set yet"
       : metRules.length < 2
-      ? "Too weak"
-      : metRules.length < 3
-      ? "Almost there"
-      : "Meets the rule";
+        ? "Too weak"
+        : metRules.length < 3
+          ? "Almost there"
+          : "Meets the rule";
 
   const fieldStyle = (name) => ({
     backgroundColor: field,
-    borderColor:
-      focusField === name ? brand.primaryColor : withAlpha(brand.neutralColor, 0.32),
+    borderColor: focusField === name ? brand.primaryColor : withAlpha(brand.neutralColor, 0.32),
     color: ink,
     borderRadius: brand.radius,
-    boxShadow:
-      focusField === name
-        ? `0 0 0 3px ${withAlpha(brand.primaryColor, 0.16)}`
-        : "none",
+    boxShadow: focusField === name ? `0 0 0 3px ${withAlpha(brand.primaryColor, 0.16)}` : "none",
     transition: "box-shadow .18s ease, border-color .18s ease",
   });
 
@@ -148,7 +144,7 @@ export default function Screen() {
     borderRadius: `calc(${brand.radius} * 1.75)`,
     boxShadow: `0 1px 1px ${withAlpha(brand.primaryColor, 0.05)}, 0 24px 48px -36px ${withAlpha(
       brand.primaryColor,
-      0.45
+      0.45,
     )}`,
   };
 
@@ -168,7 +164,7 @@ export default function Screen() {
     }
     if (!EMAIL_RE.test(value)) {
       setEmailError(
-        "That doesn’t look like an email address — check for a missing @ or a stray space."
+        "That doesn’t look like an email address — check for a missing @ or a stray space.",
       );
       return;
     }
@@ -227,7 +223,7 @@ export default function Screen() {
     let bad = false;
     if (metRules.length < PASSWORD_RULES.length) {
       setPwError(
-        "Use at least 10 characters with a letter and a number — the three checks below all need a tick."
+        "Use at least 10 characters with a letter and a number — the three checks below all need a tick.",
       );
       bad = true;
     } else {
@@ -265,12 +261,7 @@ export default function Screen() {
   }
 
   const toggleSignOut = (e) => {
-    const v =
-      typeof e === "boolean"
-        ? e
-        : e && e.target
-        ? e.target.checked
-        : !signOutOthers;
+    const v = typeof e === "boolean" ? e : e && e.target ? e.target.checked : !signOutOthers;
     setSignOutOthers(v);
   };
 
@@ -286,8 +277,8 @@ export default function Screen() {
         Send me a reset link
       </h2>
       <p className="mt-3 max-w-prose text-[0.975rem] leading-7" style={{ color: muted }}>
-        We’ll email a single-use link. It stays valid for {LINK_LIFETIME_MIN} minutes,
-        and opening it lets you set a new password without needing the old one.
+        We’ll email a single-use link. It stays valid for {LINK_LIFETIME_MIN} minutes, and opening
+        it lets you set a new password without needing the old one.
       </p>
 
       <form className="mt-8" onSubmit={submitRequest} noValidate>
@@ -364,9 +355,9 @@ export default function Screen() {
 
       <figure className="pl-5" style={{ borderLeft: `2px solid ${brand.accentColor}` }}>
         <blockquote className="text-[0.95rem] leading-7" style={{ color: ink }}>
-          “Whatever you type, the next screen says the same thing. We never reveal
-          which addresses have an account here — not to you, and not to anyone
-          testing a list of addresses against the form.”
+          “Whatever you type, the next screen says the same thing. We never reveal which addresses
+          have an account here — not to you, and not to anyone testing a list of addresses against
+          the form.”
         </blockquote>
         <figcaption className={`mt-2 ${label}`} style={{ color: muted }}>
           Why the confirmation is vague
@@ -393,9 +384,9 @@ export default function Screen() {
         Check that inbox
       </h2>
       <p className="mt-3 max-w-prose text-[0.975rem] leading-7" style={{ color: muted }}>
-        If <span style={{ color: ink, fontWeight: 600 }}>{sentTo}</span> has an account
-        with us, a link to set a new password is on its way. It can be used once and
-        expires {LINK_LIFETIME_MIN} minutes after it was sent.
+        If <span style={{ color: ink, fontWeight: 600 }}>{sentTo}</span> has an account with us, a
+        link to set a new password is on its way. It can be used once and expires{" "}
+        {LINK_LIFETIME_MIN} minutes after it was sent.
       </p>
 
       <dl
@@ -454,8 +445,8 @@ export default function Screen() {
             That’s three links in an hour
           </p>
           <p className="mt-2 text-[0.9rem] leading-7" style={{ color: ink }}>
-            We pause reset emails after three requests so nobody can flood a
-            mailbox. Any of the links already sent still works until it expires.
+            We pause reset emails after three requests so nobody can flood a mailbox. Any of the
+            links already sent still works until it expires.
           </p>
         </div>
       ) : null}
@@ -475,8 +466,8 @@ export default function Screen() {
           {sending
             ? "Sending…"
             : cooldown > 0
-            ? `Send again in ${mmss(cooldown)}`
-            : "Send the link again"}
+              ? `Send again in ${mmss(cooldown)}`
+              : "Send the link again"}
         </Button>
         <Button
           type="button"
@@ -492,8 +483,8 @@ export default function Screen() {
       </div>
 
       <p className="mt-6 text-[0.875rem] leading-6" style={{ color: muted }}>
-        Nothing after a few minutes? Look in spam and promotions, and check the
-        address above for a typo.{" "}
+        Nothing after a few minutes? Look in spam and promotions, and check the address above for a
+        typo.{" "}
         <button type="button" onClick={() => navigate("signin")} style={linkBtn}>
           Back to sign in
         </button>
@@ -531,28 +522,17 @@ export default function Screen() {
         Choose a new password
       </h2>
       <p className="mt-3 max-w-prose text-[0.975rem] leading-7" style={{ color: muted }}>
-        Once you save it, this link stops working and your documents and
-        conversations are reachable again with the password below.
+        Once you save it, this link stops working and your documents and conversations are reachable
+        again with the password below.
       </p>
 
       <form className="mt-8" onSubmit={submitPassword} noValidate>
-        <div className="flex items-baseline justify-between gap-4">
-          <Label htmlFor="new-password" className={label} style={{ color: ink }}>
-            New password
-          </Label>
-          <button
-            type="button"
-            onClick={() => setShowPw((v) => !v)}
-            className="text-[0.8rem] font-semibold"
-            style={linkBtn}
-          >
-            {showPw ? "Hide password" : "Show password"}
-          </button>
-        </div>
-        <Input
+        <Label htmlFor="new-password" className={label} style={{ color: ink }}>
+          New password
+        </Label>
+        <PasswordField
           id="new-password"
           name="password"
-          type={showPw ? "text" : "password"}
           autoComplete="new-password"
           value={pw}
           onChange={(e) => setPw(e.target.value)}
@@ -560,8 +540,10 @@ export default function Screen() {
           onBlur={() => setFocusField(null)}
           aria-invalid={pwError ? "true" : "false"}
           aria-describedby={`pw-rules pw-strength${pwError ? " pw-error" : ""}`}
-          className="mt-2 w-full px-3.5 py-2.5 text-[1rem]"
+          className="w-full px-3.5 py-2.5 text-[1rem]"
           style={fieldStyle("pw")}
+          wrapperClassName="mt-2"
+          toggleStyle={{ color: muted }}
         />
 
         <div className="mt-3 flex items-center gap-3">
@@ -635,10 +617,9 @@ export default function Screen() {
           <Label htmlFor="confirm-password" className={label} style={{ color: ink }}>
             Type it again
           </Label>
-          <Input
+          <PasswordField
             id="confirm-password"
             name="password_confirm"
-            type={showPw ? "text" : "password"}
             autoComplete="new-password"
             value={pw2}
             onChange={(e) => setPw2(e.target.value)}
@@ -646,8 +627,10 @@ export default function Screen() {
             onBlur={() => setFocusField(null)}
             aria-invalid={pw2Error ? "true" : "false"}
             aria-describedby={pw2Error ? "pw2-error" : undefined}
-            className="mt-2 w-full px-3.5 py-2.5 text-[1rem]"
+            className="w-full px-3.5 py-2.5 text-[1rem]"
             style={fieldStyle("pw2")}
+            wrapperClassName="mt-2"
+            toggleStyle={{ color: muted }}
           />
           {pw2Error ? (
             <p
@@ -656,10 +639,7 @@ export default function Screen() {
               className="rr-rise mt-2.5 flex items-start gap-2 text-[0.875rem] leading-6"
               style={{ color: brand.accentColor }}
             >
-              <Icons.AlertCircle
-                className="mt-0.5 h-4 w-4 shrink-0"
-                aria-hidden="true"
-              />
+              <Icons.AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{pw2Error}</span>
             </p>
           ) : null}
@@ -737,9 +717,9 @@ export default function Screen() {
         This link no longer works
       </h2>
       <p className="mt-3 max-w-prose text-[0.975rem] leading-7" style={{ color: muted }}>
-        Reset links last {LINK_LIFETIME_MIN} minutes and can only be opened once. This
-        one has either been used already or has expired. Nothing has changed on the
-        account — the old password still signs you in.
+        Reset links last {LINK_LIFETIME_MIN} minutes and can only be opened once. This one has
+        either been used already or has expired. Nothing has changed on the account — the old
+        password still signs you in.
       </p>
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -863,20 +843,12 @@ export default function Screen() {
         >
           Reset your password
         </h1>
-        <p
-          className="mt-4 max-w-prose text-[1.0625rem] leading-8"
-          style={{ color: muted }}
-        >
-          Your library and your conversations stay exactly where they are. Only the
-          way you get back into them changes.
+        <p className="mt-4 max-w-prose text-[1.0625rem] leading-8" style={{ color: muted }}>
+          Your library and your conversations stay exactly where they are. Only the way you get back
+          into them changes.
         </p>
 
-        <section
-          key={mode}
-          className="rr-rise mt-9"
-          style={panelStyle}
-          aria-live="polite"
-        >
+        <section key={mode} className="rr-rise mt-9" style={panelStyle} aria-live="polite">
           {panels[mode]}
         </section>
 
