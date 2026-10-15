@@ -1,7 +1,5 @@
-"""Auth and session endpoints owned here: signup and email verification.
-
-Login/logout and password reset belong to `RAGCD78C25-10-1` and are not
-implemented in this router.
+"""Auth and session endpoints: signup, email verification, login/logout and
+the forgotten-password reset flow (`RAGCD78C25-10-1`).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -11,28 +9,41 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import EmailToken, User
+from app.models import Conversation, EmailToken, User
 from app.schemas import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    LoginRequest,
+    LoginResponse,
+    LogoutResponse,
     ResendRequest,
     ResendResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     SignupRequest,
     SignupResponse,
     VerifyRequest,
     VerifyResponse,
 )
 from app.security import (
+    SESSION_COOKIE_NAME,
     check_and_increment_rate_limit,
+    clear_session_cookie,
     generate_raw_token,
     hash_password,
     hash_token,
+    revoke_session_token,
+    send_password_reset_email,
     send_verification_email,
     set_session_cookie,
+    verify_password_timing_safe,
     verify_turnstile,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 VERIFY_TOKEN_TTL_HOURS = 24
+RESET_TOKEN_TTL_HOURS = 1
 
 
 def _client_ip(request: Request) -> str:
@@ -48,6 +59,26 @@ def _invalid_token_error() -> HTTPException:
         detail={
             "code": "verification_link_invalid",
             "message": "This verification link is no longer valid.",
+        },
+    )
+
+
+def _invalid_reset_token_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "code": "reset_link_invalid",
+            "message": "This password reset link is no longer valid or has already been used.",
+        },
+    )
+
+
+def _invalid_credentials_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={
+            "code": "invalid_credentials",
+            "message": "Email or password is incorrect.",
         },
     )
 
@@ -139,3 +170,97 @@ async def resend_verification(payload: ResendRequest, db: Session = Depends(get_
         send_verification_email(user.email, raw_token)
 
     return ResendResponse()
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(
+    payload: LoginRequest, response: Response, db: Session = Depends(get_db)
+) -> LoginResponse:
+    user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
+
+    # Hash against a dummy value when there is no account at all, so an
+    # unknown address takes the same code path (and roughly the same time)
+    # as a known one with a wrong password.
+    password_ok = verify_password_timing_safe(
+        payload.password, user.password_hash if user is not None else None
+    )
+    if user is None or not password_ok:
+        raise _invalid_credentials_error()
+
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "verification_required",
+                "message": "Please verify your email before signing in.",
+            },
+        )
+
+    set_session_cookie(response, str(user.id))
+
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.user_id == user.id)
+        .order_by(Conversation.updated_at.desc())
+        .first()
+    )
+    return LoginResponse(conversation_id=str(conversation.id) if conversation is not None else None)
+
+
+@router.post("/logout", response_model=LogoutResponse)
+async def logout(request: Request, response: Response) -> LogoutResponse:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token:
+        revoke_session_token(token)
+    clear_session_cookie(response)
+    return LogoutResponse()
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(
+    payload: ForgotPasswordRequest, db: Session = Depends(get_db)
+) -> ForgotPasswordResponse:
+    user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
+    if user is not None:
+        raw_token = generate_raw_token()
+        token = EmailToken(
+            user_id=user.id,
+            purpose="reset_password",
+            token_hash=hash_token(raw_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=RESET_TOKEN_TTL_HOURS),
+        )
+        db.add(token)
+        db.commit()
+        send_password_reset_email(user.email, raw_token)
+
+    return ForgotPasswordResponse()
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+async def reset_password(
+    payload: ResetPasswordRequest, db: Session = Depends(get_db)
+) -> ResetPasswordResponse:
+    token_hash = hash_token(payload.token)
+    record = (
+        db.query(EmailToken)
+        .filter(EmailToken.token_hash == token_hash, EmailToken.purpose == "reset_password")
+        .first()
+    )
+    if record is None or record.used_at is not None:
+        raise _invalid_reset_token_error()
+
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        raise _invalid_reset_token_error()
+
+    user = db.query(User).filter(User.id == record.user_id).first()
+    if user is None:
+        raise _invalid_reset_token_error()
+
+    user.password_hash = hash_password(payload.password)
+    record.used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return ResetPasswordResponse()

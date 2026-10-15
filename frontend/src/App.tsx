@@ -6,6 +6,7 @@ import ResetPassword from "@/screens/ResetPassword";
 import Chat from "@/screens/Chat";
 import Library from "@/screens/Library";
 import Account from "@/screens/Account";
+import { ProtectedRoute } from "@/lib/session";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   [
@@ -55,9 +56,30 @@ export default function App() {
           <Route path="/signin" element={<Signin />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/chat" element={<Chat />} />
-          <Route path="/library" element={<Library />} />
-          <Route path="/account" element={<Account />} />
+          <Route
+            path="/chat"
+            element={
+              <ProtectedRoute>
+                <Chat />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/library"
+            element={
+              <ProtectedRoute>
+                <Library />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <Account />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/signin" replace />} />
         </Routes>
       </main>

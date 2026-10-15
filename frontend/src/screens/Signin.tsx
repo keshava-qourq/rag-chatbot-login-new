@@ -2,14 +2,17 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
 import { Turnstile } from "@marsidev/react-turnstile";
+import { useQueryClient } from "@tanstack/react-query";
 
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
 import { useNavigate } from "@/lib/navigate";
+import { SESSION_QUERY_KEY } from "@/lib/session";
 import {
   ApiError,
   fieldErrorsFromApiError,
+  login,
   resendVerification,
   signup,
   TURNSTILE_SITE_KEY,
@@ -30,8 +33,6 @@ const IconArrowRight = ICO.ArrowRight || Nothing;
 const IconArrowLeft = ICO.ArrowLeft || Nothing;
 const IconUpload = ICO.Upload || Nothing;
 const IconUser = ICO.User || Nothing;
-
-const DEMO_ACCOUNT = { email: 'ellen.mbeki@northwindlaw.co.uk', name: 'Ellen Mbeki', lastConversation: 'Warranty terms — ecoTEC plus' };
 
 const SAMPLE = {
   question: 'How long is the boiler under warranty, and does servicing affect it?',
@@ -59,6 +60,7 @@ const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v).trim());
 
 export default function Screen() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const ink = brand.primaryColor;
   const quiet = brand.neutralColor;
   const accent = brand.accentColor;
@@ -69,13 +71,13 @@ export default function Screen() {
   const [notice, setNotice] = React.useState(true);
 
   // sign in
-  const [email, setEmail] = React.useState(DEMO_ACCOUNT.email);
-  const [password, setPassword] = React.useState('cold-brew-41');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
   const [remember, setRemember] = React.useState(true);
   const [signinFields, setSigninFields] = React.useState({});
   const [signinAlert, setSigninAlert] = React.useState(null);
-  const [signinState, setSigninState] = React.useState('idle'); // idle | submitting | locked | success
-  const [attempts, setAttempts] = React.useState(0);
+  const [signinState, setSigninState] = React.useState('idle'); // idle | submitting | success
+  const [signinResult, setSigninResult] = React.useState(null);
   const [showPassword, setShowPassword] = React.useState(false);
 
   // sign up
@@ -89,9 +91,6 @@ export default function Screen() {
   const [resendCount, setResendCount] = React.useState(0);
   const [resendAt, setResendAt] = React.useState('');
   const [resendError, setResendError] = React.useState(null);
-
-  const timer = React.useRef(null);
-  React.useEffect(() => () => clearTimeout(timer.current), []);
 
   const tabRefs = { signin: React.useRef(null), signup: React.useRef(null) };
 
@@ -131,9 +130,9 @@ export default function Screen() {
     }
   }
 
-  function handleSignIn(e) {
+  async function handleSignIn(e) {
     e.preventDefault();
-    if (signinState === 'submitting' || signinState === 'locked') return;
+    if (signinState === 'submitting') return;
     const errs = {};
     if (!email.trim()) errs.email = 'Enter the email address you signed up with.';
     else if (!isEmail(email)) errs.email = 'That doesn’t look like an email address — check for a missing @ or domain.';
@@ -143,31 +142,28 @@ export default function Screen() {
     if (Object.keys(errs).length) return;
 
     setSigninState('submitting');
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      const ok = email.trim().toLowerCase() === DEMO_ACCOUNT.email && password.length >= 8;
-      if (ok) {
-        setSigninState('success');
-        return;
-      }
-      const n = attempts + 1;
-      setAttempts(n);
-      if (n >= 3) {
-        setSigninState('locked');
-        setSigninAlert({
-          title: 'Sign-in paused on this device',
-          body:
-            'Three attempts have failed, so we’ve paused sign-in for a few minutes. Your email and password are still in the form — or reset your password while you wait.',
-        });
-      } else {
-        setSigninState('idle');
+    try {
+      const result = await login({ email: email.trim(), password, remember });
+      setSigninResult(result);
+      setSigninState('success');
+      await queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY });
+    } catch (err) {
+      setSigninState('idle');
+      if (err instanceof ApiError && err.status === 401) {
+        // Deliberately generic: no hint which of email or password was
+        // wrong, and no field-level error either. AC-008.
         setSigninAlert({
           title: 'That email or password is incorrect',
           body:
             'We don’t say which one. It keeps strangers from learning whether an address has a library here.',
         });
+      } else {
+        setSigninAlert({
+          title: 'Something went wrong',
+          body: 'We could not sign you in just now. Please try again in a moment.',
+        });
       }
-    }, 750);
+    }
   }
 
   async function handleSignUp(e) {
@@ -391,7 +387,7 @@ export default function Screen() {
                           <IconCheckCircle className="h-[22px] w-[22px]" />
                         </span>
                         <h2 className="mt-5 text-[22px] tracking-[-0.01em]" style={{ color: ink, fontFamily: brand.fontHeading }}>
-                          Signed in as {DEMO_ACCOUNT.name}
+                          Signed in as {signinResult?.email}
                         </h2>
                         <p className="mt-3 text-[15px] leading-[1.7]" style={{ color: quiet }}>
                           Your session is held in a secure, HTTP-only cookie{remember ? ' and will be kept on this device' : ' for this browser session only'}.
@@ -403,7 +399,9 @@ export default function Screen() {
                           className="rr-focus mt-7 flex w-full items-center justify-center gap-2 px-5 py-3 text-[15px] font-medium"
                           style={primaryButtonStyle}
                         >
-                          Open “{DEMO_ACCOUNT.lastConversation}”
+                          {signinResult?.most_recent_conversation_id
+                            ? 'Open your most recent conversation'
+                            : 'Start your first conversation'}
                           <span aria-hidden="true"><IconArrowRight className="h-[16px] w-[16px]" /></span>
                         </Button>
                         <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
@@ -436,22 +434,7 @@ export default function Screen() {
 
                         <div className="mt-7">
                           {signinAlert && (
-                            <Alert title={signinAlert.title} body={signinAlert.body} tone="accent">
-                              {signinState === 'locked' ? (
-                                <button
-                                  type="button"
-                                  onClick={() => navigate('reset-password')}
-                                  className="rr-focus rr-underline mt-2 rounded text-[13.5px] font-medium underline underline-offset-4"
-                                  style={{ color: accent }}
-                                >
-                                  Reset my password instead
-                                </button>
-                              ) : (
-                                <p className="mt-2 text-[13px]" style={{ color: quiet, fontVariantNumeric: 'tabular-nums' }}>
-                                  Attempt {attempts} of 3 before sign-in pauses.
-                                </p>
-                              )}
-                            </Alert>
+                            <Alert title={signinAlert.title} body={signinAlert.body} tone="accent" />
                           )}
 
                           <div>
@@ -527,12 +510,11 @@ export default function Screen() {
 
                           <Button
                             type="submit"
-                            disabled={signinState === 'submitting' || signinState === 'locked'}
+                            disabled={signinState === 'submitting'}
                             className="rr-focus mt-7 flex w-full items-center justify-center gap-2 px-5 py-3 text-[15px] font-medium"
                             style={{
                               ...primaryButtonStyle,
-                              opacity: signinState === 'submitting' || signinState === 'locked' ? 0.55 : 1,
-                              cursor: signinState === 'locked' ? 'not-allowed' : 'pointer',
+                              opacity: signinState === 'submitting' ? 0.55 : 1,
                             }}
                           >
                             {signinState === 'submitting' ? (
@@ -544,8 +526,6 @@ export default function Screen() {
                                 </span>
                                 Checking your details…
                               </>
-                            ) : signinState === 'locked' ? (
-                              'Paused — try again in a few minutes'
                             ) : (
                               'Sign in'
                             )}

@@ -4,6 +4,12 @@
 // POST /auth/signup, POST /auth/verify and POST /auth/verify/resend; the
 // backend router is still a stub, so this is deliberately the single place
 // those shapes are declared.
+//
+// Login, logout, forgot-password, reset-password and the session check added
+// for RAGCD78C25-10-2 follow the same pattern: typed request/response shapes
+// against the documented contract, with the session check (GET /auth/session)
+// added because every protected route needs a way to ask "is anyone signed
+// in" -- see the risk note in that task's report.
 import { apiFetch, ApiError } from "@/lib/api";
 
 export { ApiError };
@@ -63,6 +69,81 @@ export function resendVerification(email: string): Promise<ResendResponse> {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export type LoginRequest = {
+  email: string;
+  password: string;
+  remember?: boolean;
+};
+
+export type LoginResponse = {
+  email: string;
+  /** Null when the account has no conversations yet, in which case the
+   * caller lands on the empty chat screen instead. */
+  most_recent_conversation_id: string | null;
+};
+
+export function login(body: LoginRequest): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function logout(): Promise<void> {
+  return apiFetch<void>("/auth/logout", { method: "POST" });
+}
+
+export type ForgotPasswordRequest = {
+  email: string;
+};
+
+export type ForgotPasswordResponse = {
+  message: string;
+};
+
+/** Always resolves with the same neutral body, whether or not the address
+ * has an account -- the backend's job, not something this helper can check
+ * client-side, so the UI must render the confirmation on both outcomes. */
+export function forgotPassword(email: string): Promise<ForgotPasswordResponse> {
+  const body: ForgotPasswordRequest = { email };
+  return apiFetch<ForgotPasswordResponse>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export type ResetPasswordRequest = {
+  token: string;
+  password: string;
+};
+
+export type ResetPasswordResponse = {
+  message: string;
+};
+
+export function resetPassword(token: string, password: string): Promise<ResetPasswordResponse> {
+  const body: ResetPasswordRequest = { token, password };
+  return apiFetch<ResetPasswordResponse>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export type SessionResponse = {
+  email: string;
+};
+
+/** Not part of the four endpoints this task's contract names -- added
+ * because a route guard has to ask something to find out whether the
+ * session cookie is still good, and the backend's `get_current_user`
+ * dependency already answers that with a 401 for any authenticated route.
+ * See this task's `risk` note: the backend needs a matching
+ * `GET /auth/session` handler for this to resolve to anything but a 404
+ * until then. */
+export function getSession(): Promise<SessionResponse> {
+  return apiFetch<SessionResponse>("/auth/session");
 }
 
 export type FieldErrorDetail = {

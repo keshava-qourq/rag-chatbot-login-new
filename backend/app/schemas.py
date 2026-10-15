@@ -20,6 +20,18 @@ class StubResponse(BaseModel):
     detail: str = "Scaffolded from the approved API spec; no behaviour yet."
 
 
+def _check_password_strength(value: str) -> str:
+    if (
+        len(value) < 10
+        or not any(c.isalpha() for c in value)
+        or not any(c.isdigit() for c in value)
+    ):
+        raise ValueError(
+            "Password must be at least 10 characters and include a letter and a number."
+        )
+    return value
+
+
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str
@@ -28,15 +40,7 @@ class SignupRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, value: str) -> str:
-        if (
-            len(value) < 10
-            or not any(c.isalpha() for c in value)
-            or not any(c.isdigit() for c in value)
-        ):
-            raise ValueError(
-                "Password must be at least 10 characters and include a letter and a number."
-            )
-        return value
+        return _check_password_strength(value)
 
 
 class SignupResponse(BaseModel):
@@ -68,3 +72,45 @@ class ResendResponse(BaseModel):
     message: str = (
         "If this email is registered and unverified, a new verification email has been sent."
     )
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """The id of the user's most recent conversation, or null when they have
+    none yet -- the client uses this to decide whether to land on an empty
+    chat screen or resume the last one."""
+
+    conversation_id: str | None = None
+
+
+class LogoutResponse(BaseModel):
+    message: str = "You have been signed out."
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    """Neutral by design: identical whether the email is registered or not,
+    so the response itself cannot be used to enumerate accounts."""
+
+    message: str = "If this email is registered, a password reset link has been sent."
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, value: str) -> str:
+        return _check_password_strength(value)
+
+
+class ResetPasswordResponse(BaseModel):
+    message: str = "Your password has been updated."

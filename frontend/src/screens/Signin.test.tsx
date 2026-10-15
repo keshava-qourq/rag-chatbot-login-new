@@ -1,10 +1,12 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const signupMock = vi.fn();
 const resendVerificationMock = vi.fn();
+const loginMock = vi.fn();
 
 vi.mock("@marsidev/react-turnstile", () => ({
   Turnstile: ({ onSuccess }: { onSuccess: (token: string) => void }) => (
@@ -20,6 +22,7 @@ vi.mock("@/lib/authApi", async () => {
     ...actual,
     signup: (...args: unknown[]) => signupMock(...args),
     resendVerification: (...args: unknown[]) => resendVerificationMock(...args),
+    login: (...args: unknown[]) => loginMock(...args),
   };
 });
 
@@ -28,10 +31,15 @@ import { ApiError } from "@/lib/authApi";
 import Signin from "./Signin";
 
 function renderScreen() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   render(
-    <MemoryRouter>
-      <Signin />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <Signin />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -49,6 +57,7 @@ describe("Signin - create account tab", () => {
   beforeEach(() => {
     signupMock.mockReset();
     resendVerificationMock.mockReset();
+    loginMock.mockReset();
   });
 
   it("renders the Turnstile widget and blocks submit until a token is present", async () => {
@@ -148,5 +157,75 @@ describe("Signin - create account tab", () => {
 
     expect(await screen.findByText("Password is too common.")).toBeInTheDocument();
     expect(signupMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Signin - sign in tab", () => {
+  beforeEach(() => {
+    signupMock.mockReset();
+    resendVerificationMock.mockReset();
+    loginMock.mockReset();
+  });
+
+  it("calls POST /auth/login with the entered credentials and navigates to the returned conversation on success", async () => {
+    loginMock.mockResolvedValue({
+      email: "ellen@example.com",
+      most_recent_conversation_id: "conv-123",
+    });
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(screen.getByLabelText("Email address"), "ellen@example.com");
+    await user.type(screen.getByLabelText("Password"), "cold-brew-41");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() =>
+      expect(loginMock).toHaveBeenCalledWith({
+        email: "ellen@example.com",
+        password: "cold-brew-41",
+        remember: true,
+      }),
+    );
+    expect(await screen.findByText(/signed in as ellen@example.com/i)).toBeInTheDocument();
+    expect(screen.getByText(/open your most recent conversation/i)).toBeInTheDocument();
+  });
+
+  it("offers the empty chat screen when there is no most-recent conversation", async () => {
+    loginMock.mockResolvedValue({ email: "new@example.com", most_recent_conversation_id: null });
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(screen.getByLabelText("Email address"), "new@example.com");
+    await user.type(screen.getByLabelText("Password"), "whatever-123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText(/start your first conversation/i)).toBeInTheDocument();
+  });
+
+  it("renders a generic incorrect-credentials message on a 401 with no field-level hint", async () => {
+    loginMock.mockRejectedValue(new ApiError("unauthorized", 401, { detail: "nope" }));
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.type(screen.getByLabelText("Email address"), "ellen@example.com");
+    await user.type(screen.getByLabelText("Password"), "wrong-password");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("That email or password is incorrect")).toBeInTheDocument();
+    expect(screen.queryByText(/signed in as/i)).not.toBeInTheDocument();
+    // No field-level hint about which value was wrong (AC-008).
+    expect(screen.queryByText(/enter your password/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Email address")).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Password")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("shows client-side validation and never calls login for an empty form", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText(/enter the email address you signed up with/i)).toBeInTheDocument();
+    expect(loginMock).not.toHaveBeenCalled();
   });
 });

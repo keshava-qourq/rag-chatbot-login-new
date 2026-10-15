@@ -1,11 +1,14 @@
 // @ts-nocheck -- generated from the approved design under its JS runtime contract; not hand-written TypeScript.
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
 import { useNavigate } from "@/lib/navigate";
+import { SESSION_QUERY_KEY } from "@/lib/session";
+import { logout } from "@/lib/authApi";
 
 const { Button, Card, CardContent, CardFooter, Input, Label, Checkbox, Badge, Separator } = UI;
 const { Check, X, ChevronRight, FileText, Clock, AlertCircle, CheckCircle } = Icons;
@@ -76,6 +79,7 @@ const STYLES = `
 
 export default function Screen() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const ink = shade(brand.neutralColor, -0.62);
   const muted = brand.neutralColor;
   const paper = "rgba(255, 255, 255, 0.62)";
@@ -86,6 +90,7 @@ export default function Screen() {
   const [attempt, setAttempt] = React.useState(0);
 
   const [confirmSignOut, setConfirmSignOut] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [confirmText, setConfirmText] = React.useState("");
   const [ack, setAck] = React.useState(false);
@@ -147,6 +152,21 @@ export default function Screen() {
     }
     setDeleteError(null);
     setDeleting(true);
+  };
+
+  // AC-009: a Sign out control calls POST /auth/logout, clears the cached
+  // session so any guarded route re-checks rather than trusting a stale
+  // "signed in" result, then sends the user to /signin.
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      queryClient.removeQueries({ queryKey: SESSION_QUERY_KEY });
+      setSigningOut(false);
+      navigate("signin");
+    }
   };
 
   const msgPct = Math.round((usage.messages_this_month / LIMITS.messages) * 100);
@@ -585,6 +605,7 @@ export default function Screen() {
                 <div className="flex items-center gap-2">
                   <Button
                     onClick={() => setConfirmSignOut(false)}
+                    disabled={signingOut}
                     className="rounded-md border px-4 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                     style={{
                       borderColor: rule,
@@ -597,16 +618,18 @@ export default function Screen() {
                     Stay signed in
                   </Button>
                   <Button
-                    onClick={() => navigate("signin")}
+                    onClick={handleSignOut}
+                    disabled={signingOut}
                     className="rounded-md px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                     style={{
                       backgroundColor: brand.primaryColor,
                       color: brand.backgroundColor,
                       borderRadius: brand.radius,
+                      opacity: signingOut ? 0.7 : 1,
                       ...focusRing,
                     }}
                   >
-                    Sign out now
+                    {signingOut ? "Signing out…" : "Sign out now"}
                   </Button>
                 </div>
               </div>

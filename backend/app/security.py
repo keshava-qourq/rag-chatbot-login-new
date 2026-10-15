@@ -41,17 +41,39 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
+# A fixed, precomputed hash verified against on an unknown-email login so the
+# branch that would otherwise skip hashing entirely does not make itself
+# observable as a timing difference (and, with it, a way to enumerate
+# registered addresses).
+_DUMMY_PASSWORD_HASH = pwd_context.hash("not-a-real-account-password")
+
+
+def verify_password_timing_safe(password: str, password_hash: str | None) -> bool:
+    return verify_password(password, password_hash or _DUMMY_PASSWORD_HASH)
+
+
 def create_session_token(user_id: str) -> str:
     ttl = int(os.getenv("SESSION_TTL_SECONDS", "604800"))
     now = datetime.now(timezone.utc)
-    payload = {"sub": str(user_id), "iat": now, "exp": now + timedelta(seconds=ttl)}
+    payload = {
+        "sub": str(user_id),
+        "iat": now,
+        "exp": now + timedelta(seconds=ttl),
+        "jti": secrets.token_hex(16),
+    }
     return jwt.encode(payload, _secret_key(), algorithm=SESSION_ALGORITHM)
 
 
-def decode_session_token(token: str) -> str | None:
+def _decode_token(token: str) -> dict | None:
     try:
-        payload = jwt.decode(token, _secret_key(), algorithms=[SESSION_ALGORITHM])
+        return jwt.decode(token, _secret_key(), algorithms=[SESSION_ALGORITHM])
     except JWTError:
+        return None
+
+
+def decode_session_token(token: str) -> str | None:
+    payload = _decode_token(token)
+    if payload is None:
         return None
     return payload.get("sub")
 
@@ -68,6 +90,80 @@ def set_session_cookie(response: Response, user_id: str) -> None:
         samesite=samesite,
         path="/",
     )
+
+
+def clear_session_cookie(response: Response) -> None:
+    secure = os.getenv("COOKIE_SECURE", "true").lower() != "false"
+    samesite = os.getenv("COOKIE_SAMESITE", "lax")
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=secure,
+        samesite=samesite,
+    )
+
+
+# -- Session revocation -------------------------------------------------
+#
+# The session cookie is a stateless JWT, so logging out has to be enforced
+# server-side by remembering that a specific token (`jti`) must no longer be
+# accepted, even though it has not expired yet. Redis-backed, as the
+# architecture names, when `REDIS_URL` is reachable; an in-memory set
+# otherwise -- the same fallback shape `check_and_increment_rate_limit` uses.
+
+_revoked_jti_memory: dict[str, float] = {}
+
+
+def revoke_session_token(token: str) -> None:
+    """Mark the token presented at logout as no longer acceptable, even
+    though its signature is still valid until it expires."""
+    payload = _decode_token(token)
+    if payload is None:
+        return
+    jti = payload.get("jti")
+    if not jti:
+        return
+    exp = payload.get("exp")
+    default_ttl = int(os.getenv("SESSION_TTL_SECONDS", "604800"))
+    ttl = max(int(exp) - int(time.time()), 1) if exp else default_ttl
+
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            import redis as redis_lib
+
+            client = redis_lib.Redis.from_url(redis_url, socket_connect_timeout=1)
+            client.setex(f"revoked_session:{jti}", ttl, "1")
+            return
+        except Exception:
+            pass  # fall through to the in-memory set
+
+    _revoked_jti_memory[jti] = time.time() + ttl
+
+
+def _is_revoked(jti: str) -> bool:
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            import redis as redis_lib
+
+            client = redis_lib.Redis.from_url(redis_url, socket_connect_timeout=1)
+            return bool(client.exists(f"revoked_session:{jti}"))
+        except Exception:
+            pass  # fall through to the in-memory set
+
+    expires_at = _revoked_jti_memory.get(jti)
+    if expires_at is None:
+        return False
+    if time.time() >= expires_at:
+        del _revoked_jti_memory[jti]
+        return False
+    return True
+
+
+def reset_revoked_session_state() -> None:
+    """Test helper: clears the in-memory fallback revocation set."""
+    _revoked_jti_memory.clear()
 
 
 def generate_raw_token() -> str:
@@ -168,11 +264,35 @@ def send_verification_email(to_email: str, raw_token: str) -> None:
     SendGridAPIClient(api_key).send(message)
 
 
+def send_password_reset_email(to_email: str, raw_token: str) -> None:
+    """Send the single-use password reset link via SendGrid.
+
+    A no-op when `SENDGRID_API_KEY` is unset, matching
+    `send_verification_email`.
+    """
+    api_key = os.getenv("SENDGRID_API_KEY", "")
+    base_url = os.getenv("APP_BASE_URL", "http://localhost:5173")
+    reset_link = f"{base_url}/reset-password?token={raw_token}"
+    if not api_key:
+        return
+
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail
+
+    message = Mail(
+        from_email=os.getenv("EMAIL_FROM", "no-reply@example.com"),
+        to_emails=to_email,
+        subject="Reset your password",
+        plain_text_content=f"Reset your password: {reset_link}",
+    )
+    SendGridAPIClient(api_key).send(message)
+
+
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """Resolve the session cookie into a `User`, or 401.
 
-    Shared by any route that needs "signed in" -- `RAGCD78C25-10-1` owns
-    login/logout, but the cookie it will issue is this same one.
+    Shared by any route that needs "signed in". Rejects a cookie whose
+    signature is valid but whose token has been revoked by `/auth/logout`.
     """
     not_authenticated = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -181,7 +301,13 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
         raise not_authenticated
-    sub = decode_session_token(token)
+    payload = _decode_token(token)
+    if payload is None:
+        raise not_authenticated
+    jti = payload.get("jti")
+    if jti and _is_revoked(jti):
+        raise not_authenticated
+    sub = payload.get("sub")
     if not sub:
         raise not_authenticated
     try:
