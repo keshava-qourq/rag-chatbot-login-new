@@ -23,3 +23,22 @@ SERVICES = {
 def configured_services() -> dict[str, bool]:
     """Each service mapped to whether its connection variable is set."""
     return {name: bool(os.getenv(var)) for name, var in SERVICES.items()}
+
+
+DEFAULT_TITLE_MAX_LENGTH = 60
+
+
+def derive_conversation_title(question: str, max_length: int = DEFAULT_TITLE_MAX_LENGTH) -> str:
+    """Derive a conversation title from the first question in an exchange.
+
+    Whitespace (including newlines) is collapsed to single spaces, then the
+    result is truncated to `max_length` characters so a long question still
+    fits the sidebar. Used both by the conversations list (once a title has
+    been set) and, in future, by the messages endpoint that completes the
+    first question/answer exchange and persists it.
+    """
+    normalized = " ".join(question.split())
+    if len(normalized) <= max_length:
+        return normalized
+    truncated = normalized[:max_length].rstrip()
+    return f"{truncated}…"
