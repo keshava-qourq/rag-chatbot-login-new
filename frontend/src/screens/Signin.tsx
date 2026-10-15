@@ -1,11 +1,19 @@
 // @ts-nocheck -- generated from the approved design under its JS runtime contract; not hand-written TypeScript.
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
+import { Turnstile } from "@marsidev/react-turnstile";
 
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
 import { useNavigate } from "@/lib/navigate";
+import {
+  ApiError,
+  fieldErrorsFromApiError,
+  resendVerification,
+  signup,
+  TURNSTILE_SITE_KEY,
+} from "@/lib/authApi";
 
 const { Button, Card, CardContent, Input, Label, Badge } = UI;
 const { Check, X, User, FileText, Upload, ArrowLeft, ArrowRight, AlertCircle, CheckCircle } = Icons;
@@ -73,12 +81,14 @@ export default function Screen() {
   // sign up
   const [suEmail, setSuEmail] = React.useState('');
   const [suPassword, setSuPassword] = React.useState('');
-  const [human, setHuman] = React.useState(false);
+  const [turnstileToken, setTurnstileToken] = React.useState('');
+  const [turnstileKey, setTurnstileKey] = React.useState(0);
   const [suFields, setSuFields] = React.useState({});
   const [suState, setSuState] = React.useState('idle'); // idle | submitting | sent
   const [sentTo, setSentTo] = React.useState('');
   const [resendCount, setResendCount] = React.useState(0);
   const [resendAt, setResendAt] = React.useState('');
+  const [resendError, setResendError] = React.useState(null);
 
   const timer = React.useRef(null);
   React.useEffect(() => () => clearTimeout(timer.current), []);
@@ -160,7 +170,7 @@ export default function Screen() {
     }, 750);
   }
 
-  function handleSignUp(e) {
+  async function handleSignUp(e) {
     e.preventDefault();
     if (suState === 'submitting') return;
     const errs = {};
@@ -169,22 +179,51 @@ export default function Screen() {
     const unmet = PASSWORD_RULES.filter((r) => !r.test(suPassword));
     if (!suPassword) errs.password = 'Choose a password for your account.';
     else if (unmet.length) errs.password = 'Password is too weak: ' + unmet.map((r) => r.label.toLowerCase()).join(', ') + '.';
-    if (!human) errs.human = 'Tick the human check — it’s what keeps scripted sign-ups off our Gemini quota.';
+    if (!turnstileToken) errs.human = 'Complete the human check above before creating your account.';
     setSuFields(errs);
     if (Object.keys(errs).length) return;
 
+    const emailToSend = suEmail.trim();
     setSuState('submitting');
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      setSentTo(suEmail.trim());
+    try {
+      await signup({ email: emailToSend, password: suPassword, turnstile_token: turnstileToken });
+      setSentTo(emailToSend);
       setResendCount(0);
+      setResendError(null);
       setSuState('sent');
-    }, 800);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // A server rejection for an address already registered gets the same
+        // neutral confirmation as a new signup -- no client-side hint that
+        // the address exists.
+        setSentTo(emailToSend);
+        setResendCount(0);
+        setResendError(null);
+        setSuState('sent');
+        return;
+      }
+      if (err instanceof ApiError && err.status === 422) {
+        const fieldErrs = fieldErrorsFromApiError(err);
+        setSuFields((f) => ({ ...f, ...fieldErrs }));
+        setSuState('idle');
+        return;
+      }
+      setTurnstileToken('');
+      setTurnstileKey((k) => k + 1);
+      setSuFields({ form: 'Something went wrong creating your account. Please try again.' });
+      setSuState('idle');
+    }
   }
 
-  function resendLink() {
-    setResendCount((c) => c + 1);
-    setResendAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  async function resendLink() {
+    try {
+      await resendVerification(sentTo);
+      setResendCount((c) => c + 1);
+      setResendAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setResendError(null);
+    } catch {
+      setResendError('We couldn’t send that again just now. Please try in a moment.');
+    }
   }
 
   const Alert = ({ title, body, tone, children }) => (
@@ -584,7 +623,7 @@ export default function Screen() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setSuState('idle'); setHuman(false); }}
+                            onClick={() => { setSuState('idle'); setTurnstileToken(''); setTurnstileKey((k) => k + 1); }}
                             className="rr-focus rr-underline inline-flex items-center gap-1.5 rounded text-[13.5px] underline underline-offset-4"
                             style={{ color: quiet }}
                           >
@@ -598,6 +637,11 @@ export default function Screen() {
                             Sent again at {resendAt}{resendCount > 1 ? ` · ${resendCount} resends this hour` : ''}.
                           </p>
                         )}
+                        {resendError && (
+                          <p className="rr-rise mt-4 text-[13px]" role="alert" style={{ color: accent }}>
+                            {resendError}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <form onSubmit={handleSignUp} noValidate>
@@ -609,6 +653,10 @@ export default function Screen() {
                         </p>
 
                         <div className="mt-7">
+                          {suFields.form && (
+                            <Alert title="Something went wrong" body={suFields.form} tone="accent" />
+                          )}
+
                           <Label htmlFor="signup-email" className="block text-[13px] font-semibold" style={{ color: ink }}>
                             Email address
                           </Label>
@@ -663,25 +711,16 @@ export default function Screen() {
                           className="mt-6 border px-4 py-4"
                           style={{ borderColor: suFields.human ? accent : line, backgroundColor: brand.neutralColor + '0A', borderRadius: radius }}
                         >
-                          <div className="flex items-start gap-3">
-                            <input
-                              id="signup-human"
-                              type="checkbox"
-                              checked={human}
-                              onChange={(e) => setHuman(e.target.checked)}
-                              aria-describedby="signup-human-note"
-                              className="rr-focus mt-0.5 h-[16px] w-[16px]"
-                              style={{ accentColor: ink }}
-                            />
+                          <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
-                              <Label htmlFor="signup-human" className="text-[14px] font-medium" style={{ color: ink }}>
-                                I’m a person, not a script
+                              <Label className="text-[14px] font-medium" style={{ color: ink }}>
+                                Confirm you’re a person
                               </Label>
-                              <p id="signup-human-note" className="mt-1 text-[12.5px] leading-5" style={{ color: quiet }}>
+                              <p className="mt-1 text-[12.5px] leading-5" style={{ color: quiet }}>
                                 Bot check · keeps scripted sign-ups off the Gemini quota that pays for your answers.
                               </p>
                             </div>
-                            {human && (
+                            {turnstileToken && (
                               <Badge
                                 className="rr-rise shrink-0 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
                                 style={{ backgroundColor: ink, color: brand.backgroundColor, borderRadius: radius }}
@@ -690,14 +729,26 @@ export default function Screen() {
                               </Badge>
                             )}
                           </div>
+                          <div className="mt-3">
+                            <Turnstile
+                              key={turnstileKey}
+                              siteKey={TURNSTILE_SITE_KEY}
+                              onSuccess={(token) => {
+                                setTurnstileToken(token);
+                                setSuFields((f) => ({ ...f, human: undefined }));
+                              }}
+                              onExpire={() => setTurnstileToken('')}
+                              onError={() => setTurnstileToken('')}
+                            />
+                          </div>
                           <FieldError id="signup-human-error">{suFields.human}</FieldError>
                         </div>
 
                         <Button
                           type="submit"
-                          disabled={suState === 'submitting'}
+                          disabled={suState === 'submitting' || !turnstileToken}
                           className="rr-focus mt-7 flex w-full items-center justify-center gap-2 px-5 py-3 text-[15px] font-medium"
-                          style={{ ...primaryButtonStyle, opacity: suState === 'submitting' ? 0.55 : 1 }}
+                          style={{ ...primaryButtonStyle, opacity: suState === 'submitting' || !turnstileToken ? 0.55 : 1 }}
                         >
                           {suState === 'submitting' ? (
                             <>

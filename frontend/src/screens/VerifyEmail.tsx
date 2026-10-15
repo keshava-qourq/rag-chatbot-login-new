@@ -1,22 +1,18 @@
 // @ts-nocheck -- generated from the approved design under its JS runtime contract; not hand-written TypeScript.
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
+import { useSearchParams } from "react-router-dom";
 
 import * as UI from "@/lib/ui";
 import { Icons } from "@/lib/icons";
 import { brand } from "@/lib/brand";
 import { useNavigate } from "@/lib/navigate";
+import { ApiError, resendVerification, verifyEmail } from "@/lib/authApi";
 
 const { Button, Input, Label } = UI;
 const { Check, Clock, Upload, ArrowRight, AlertCircle, CheckCircle } = Icons;
 
-const ACCOUNT = {
-  email: 'marguerite.okafor@northgate.co.uk',
-  created_at: '15 October 2026',
-  original_sent_at: '09:12',
-  original_expired_at: '10:12',
-  link_minutes: 60,
-};
+const LINK_MINUTES = 60;
 
 const QUOTA = {
   document_count: 0,
@@ -49,13 +45,15 @@ const plusMinutes = (d, m) => new Date(d.getTime() + m * 60000);
 
 export default function Screen() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token');
+
   const [phase, setPhase] = React.useState('checking'); // checking | expired | sent | failed | limited | verified
   const [busy, setBusy] = React.useState(false);
-  const [email, setEmail] = React.useState(ACCOUNT.email);
+  const [email, setEmail] = React.useState('');
   const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(ACCOUNT.email);
+  const [draft, setDraft] = React.useState('');
   const [fieldError, setFieldError] = React.useState('');
-  const [attempts, setAttempts] = React.useState(0);
   const [delivered, setDelivered] = React.useState(0);
   const [cooldown, setCooldown] = React.useState(0);
   const [lastSent, setLastSent] = React.useState(null);
@@ -69,11 +67,41 @@ export default function Screen() {
     timers.current.push(t);
   };
 
+  // Reads the token from the URL and calls POST /auth/verify. Success shows
+  // the verified state and, after a moment to read it, routes to the
+  // document library. An expired/used/missing token falls back to the
+  // explanatory "expired" state with a working resend action.
   React.useEffect(() => {
-    after(1600, () => setPhase('expired'));
-    return () => timers.current.forEach(clearTimeout);
+    if (!token) {
+      setPhase('expired');
+      return undefined;
+    }
+    let cancelled = false;
+    setPhase('checking');
+    verifyEmail(token)
+      .then((res) => {
+        if (cancelled) return;
+        setEmail(res.email || '');
+        setPhase('verified');
+        after(1200, () => navigate('library'));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPhase('expired');
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token]);
+
+  React.useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
+  React.useEffect(() => {
+    // An expired/missing token with no known address has nothing to resend
+    // to yet -- open the address form so the user can supply one.
+    if (phase === 'expired' && !email) setEditing(true);
+  }, [phase, email]);
 
   React.useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -90,30 +118,40 @@ export default function Screen() {
   }, [phase]);
 
   const sendLink = (toAddress) => {
+    if (!toAddress) return;
     setBusy(true);
-    after(1000, () => {
-      const nextAttempt = attempts + 1;
-      setAttempts(nextAttempt);
-      setBusy(false);
-      if (delivered >= 3) {
-        setPhase('limited');
-        return;
-      }
-      if (nextAttempt === 2) {
-        setPhase('failed');
-        return;
-      }
-      const now = new Date();
-      setLastSent({ at: clockAt(now), expires: clockAt(plusMinutes(now, ACCOUNT.link_minutes)), to: toAddress });
-      setDelivered((d) => d + 1);
-      setCooldown(30);
-      setPhase('sent');
-    });
+    resendVerification(toAddress)
+      .then(() => {
+        setBusy(false);
+        const now = new Date();
+        setLastSent({ at: clockAt(now), expires: clockAt(plusMinutes(now, LINK_MINUTES)), to: toAddress });
+        setDelivered((d) => d + 1);
+        setCooldown(30);
+        setPhase('sent');
+      })
+      .catch((err) => {
+        setBusy(false);
+        if (err instanceof ApiError && err.status === 429) {
+          setPhase('limited');
+        } else {
+          setPhase('failed');
+        }
+      });
   };
 
   const checkAgain = () => {
+    if (!token) {
+      setPhase('expired');
+      return;
+    }
     setPhase('checking');
-    after(1500, () => setPhase(delivered > 0 ? 'verified' : 'expired'));
+    verifyEmail(token)
+      .then((res) => {
+        setEmail(res.email || email);
+        setPhase('verified');
+        after(1200, () => navigate('library'));
+      })
+      .catch(() => setPhase('expired'));
   };
 
   const saveAddress = (e) => {
@@ -217,18 +255,20 @@ export default function Screen() {
         <Button type="submit" className="rr-focus px-4 py-2 text-sm font-semibold" style={primaryBtn}>
           Save and send the link
         </Button>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing(false);
-            setFieldError('');
-            setDraft(email);
-          }}
-          className="rr-focus px-3 py-2 text-sm font-medium"
-          style={{ color: brand.neutralColor, borderRadius: brand.radius }}
-        >
-          Cancel
-        </button>
+        {email ? (
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(false);
+              setFieldError('');
+              setDraft(email);
+            }}
+            className="rr-focus px-3 py-2 text-sm font-medium"
+            style={{ color: brand.neutralColor, borderRadius: brand.radius }}
+          >
+            Cancel
+          </button>
+        ) : null}
       </div>
     </form>
   );
@@ -249,7 +289,7 @@ export default function Screen() {
           <div className="rr-sweep absolute bottom-0 top-0" style={{ width: '34%', backgroundColor: brand.primaryColor, borderRadius: 999 }} />
         </div>
         <p className="rr-breathe mt-4 text-sm" style={{ ...quiet, ...nums }} role="status">
-          Verifying token · {email}
+          Verifying token{email ? ` · ${email}` : ''}
         </p>
       </div>
     );
@@ -261,35 +301,25 @@ export default function Screen() {
           That link has passed its hour
         </h2>
         <p className="mt-3 max-w-prose text-[17px] leading-8" style={quiet}>
-          Verification links last {ACCOUNT.link_minutes} minutes, and this one was sent first thing this morning.
-          Nothing is wrong with your account — a fresh link will replace the old one straight away.
+          Verification links last {LINK_MINUTES} minutes, and this one has either been used already or has
+          expired. Nothing is wrong with your account — a fresh link will replace the old one straight away.
         </p>
-        <Quote>
-          <dl className="space-y-2 text-[15px]" style={nums}>
-            <div className="flex flex-wrap gap-x-3">
-              <dt className="w-24 shrink-0 text-xs font-semibold uppercase tracking-[0.12em]" style={quiet}>Sent to</dt>
-              <dd className="break-all font-medium" style={{ color: brand.primaryColor }}>{email}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-3">
-              <dt className="w-24 shrink-0 text-xs font-semibold uppercase tracking-[0.12em]" style={quiet}>Sent</dt>
-              <dd style={quiet}>{ACCOUNT.created_at}, {ACCOUNT.original_sent_at}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-3">
-              <dt className="w-24 shrink-0 text-xs font-semibold uppercase tracking-[0.12em]" style={quiet}>Expired</dt>
-              <dd style={quiet}>{ACCOUNT.created_at}, {ACCOUNT.original_expired_at}</dd>
-            </div>
-          </dl>
-        </Quote>
+        {email ? (
+          <Quote>
+            <p className="text-[15px]" style={{ ...quiet, ...nums }}>{email}</p>
+            <p className="mt-1 text-sm" style={quiet}>Address on file — still unverified</p>
+          </Quote>
+        ) : null}
         <div className="flex flex-wrap items-center gap-3">
           <Button
             onClick={() => sendLink(email)}
-            disabled={busy}
+            disabled={busy || !email}
             className="rr-focus px-5 py-3 text-base font-semibold"
-            style={{ ...primaryBtn, opacity: busy ? 0.65 : 1 }}
+            style={{ ...primaryBtn, opacity: busy || !email ? 0.65 : 1 }}
           >
             {busy ? 'Sending…' : 'Send me a new link'}
           </Button>
-          {!editing ? (
+          {!editing && email ? (
             <button
               type="button"
               onClick={() => { setDraft(email); setEditing(true); }}
