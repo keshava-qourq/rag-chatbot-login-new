@@ -21,6 +21,13 @@ from app.services import (
     derive_conversation_title,
 )
 
+# SQLite's CURRENT_TIMESTAMP (what `func.now()` compiles to, and what
+# `created_at`/`updated_at` use as their `server_default`) only has
+# one-second resolution, so two inserts in the same test need to straddle a
+# full second -- not just a few milliseconds -- for their timestamps (and
+# therefore their newest-first ordering) to differ.
+_TIMESTAMP_GRANULARITY_SECONDS = 1.1
+
 
 @pytest.fixture()
 def db_override():
@@ -114,7 +121,7 @@ def test_create_conversation_is_newest_entry_in_listing(client, session_factory)
     _authed_client(client, token)
 
     first = client.post("/conversations").json()
-    time.sleep(0.01)
+    time.sleep(_TIMESTAMP_GRANULARITY_SECONDS)
     second = client.post("/conversations").json()
 
     listing = client.get("/conversations").json()["conversations"]
@@ -208,14 +215,12 @@ def test_derive_conversation_title_falls_back_to_default_when_empty():
 # -- apply_first_exchange_title / sort order -------------------------------
 
 
-def test_first_exchange_sets_title_and_bumps_updated_at_for_sort_order(
-    client, session_factory
-):
+def test_first_exchange_sets_title_and_bumps_updated_at_for_sort_order(client, session_factory):
     _, token = _make_verified_user(session_factory, "exchange@example.com")
     _authed_client(client, token)
 
     older = client.post("/conversations").json()
-    time.sleep(0.01)
+    time.sleep(_TIMESTAMP_GRANULARITY_SECONDS)
     newer = client.post("/conversations").json()
 
     db = session_factory()
@@ -276,7 +281,7 @@ def test_list_conversations_scoped_to_session_user_newest_first(client, session_
 
     _authed_client(client, token1)
     c1 = client.post("/conversations").json()
-    time.sleep(0.01)
+    time.sleep(_TIMESTAMP_GRANULARITY_SECONDS)
     c2 = client.post("/conversations").json()
 
     _authed_client(client, token2)

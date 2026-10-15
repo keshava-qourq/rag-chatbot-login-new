@@ -1,6 +1,7 @@
 """Tests for POST /auth/signup, /auth/verify and /auth/verify/resend."""
 
 import time
+from typing import Annotated
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -113,9 +114,7 @@ def test_signup_with_existing_email_is_neutral_and_creates_no_second_account(
 
 
 def test_signup_rejects_invalid_email_and_weak_password(client, session_factory):
-    resp = client.post(
-        "/auth/signup", json=_signup_payload("not-an-email", password="short1")
-    )
+    resp = client.post("/auth/signup", json=_signup_payload("not-an-email", password="short1"))
 
     assert resp.status_code == 422
     errors = resp.json()["detail"]
@@ -159,9 +158,7 @@ def test_signup_rate_limited_per_ip_and_resets_after_window(client, monkeypatch)
     assert r4.status_code == 201
 
 
-def test_verify_valid_token_marks_verified_sets_cookie_and_returns_library(
-    client, monkeypatch
-):
+def test_verify_valid_token_marks_verified_sets_cookie_and_returns_library(client, monkeypatch):
     captured = {}
     monkeypatch.setattr(
         auth_router,
@@ -233,7 +230,7 @@ def test_require_verified_user_blocks_unauthenticated_and_unverified(db_override
     probe_app.dependency_overrides[get_db] = override_get_db
 
     @probe_app.get("/protected")
-    def protected(user: User = Depends(security.require_verified_user)) -> dict:
+    def protected(user: Annotated[User, Depends(security.require_verified_user)]) -> dict:
         return {"ok": True}
 
     probe_client = TestClient(probe_app)

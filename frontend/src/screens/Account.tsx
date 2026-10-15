@@ -142,7 +142,7 @@ export default function Screen() {
     e.preventDefault();
     if (confirmText.trim().toLowerCase() !== ACCOUNT.email) {
       setDeleteError(
-        `That is not the address on this account. Type ${ACCOUNT.email} exactly as it is written above.`
+        `That is not the address on this account. Type ${ACCOUNT.email} exactly as it is written above.`,
       );
       return;
     }
@@ -156,12 +156,16 @@ export default function Screen() {
 
   // AC-009: a Sign out control calls POST /auth/logout, clears the cached
   // session so any guarded route re-checks rather than trusting a stale
-  // "signed in" result, then sends the user to /signin.
+  // "signed in" result, then sends the user to /signin -- even if the
+  // logout call itself fails, since the user's intent is to leave this
+  // device regardless of whether the server-side session was torn down.
   const handleSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
     try {
       await logout();
+    } catch {
+      // Ignored: still navigate away below.
     } finally {
       queryClient.removeQueries({ queryKey: SESSION_QUERY_KEY });
       setSigningOut(false);
@@ -300,10 +304,10 @@ export default function Screen() {
               {loading
                 ? "Checking with the server…"
                 : phase === "fresh"
-                ? `Checked at ${usage.checked_at}`
-                : phase === "error"
-                ? `Showing figures from ${usage.checked_at}`
-                : `Last checked at ${usage.checked_at}`}
+                  ? `Checked at ${usage.checked_at}`
+                  : phase === "error"
+                    ? `Showing figures from ${usage.checked_at}`
+                    : `Last checked at ${usage.checked_at}`}
             </span>
             <button
               type="button"
@@ -352,12 +356,16 @@ export default function Screen() {
                   aria-hidden="true"
                 />
                 <div>
-                  <p className="text-[14px] font-medium" style={{ color: shade(brand.accentColor, -0.25) }}>
+                  <p
+                    className="text-[14px] font-medium"
+                    style={{ color: shade(brand.accentColor, -0.25) }}
+                  >
                     The usage service didn&rsquo;t answer
                   </p>
                   <p className="mt-1 text-[13px] leading-6" style={{ color: muted }}>
                     Nothing is wrong with your account — we simply could not read today&rsquo;s
-                    counters. The numbers below are from {usage.checked_at} and may have moved since.
+                    counters. The numbers below are from {usage.checked_at} and may have moved
+                    since.
                   </p>
                   <button
                     type="button"
@@ -399,8 +407,14 @@ export default function Screen() {
               <Badge
                 className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium"
                 style={{
-                  backgroundColor: atLimit || nearLimit ? tint(brand.accentColor, 0.12) : tint(brand.primaryColor, 0.1),
-                  color: atLimit || nearLimit ? shade(brand.accentColor, -0.2) : shade(brand.primaryColor, -0.15),
+                  backgroundColor:
+                    atLimit || nearLimit
+                      ? tint(brand.accentColor, 0.12)
+                      : tint(brand.primaryColor, 0.1),
+                  color:
+                    atLimit || nearLimit
+                      ? shade(brand.accentColor, -0.2)
+                      : shade(brand.primaryColor, -0.15),
                   borderRadius: "999px",
                 }}
               >
@@ -409,7 +423,11 @@ export default function Screen() {
                 ) : (
                   <Icons.Check className="h-3.5 w-3.5" aria-hidden="true" />
                 )}
-                {atLimit ? "Monthly limit reached" : nearLimit ? "Close to the limit" : "Within your allowance"}
+                {atLimit
+                  ? "Monthly limit reached"
+                  : nearLimit
+                    ? "Close to the limit"
+                    : "Within your allowance"}
               </Badge>
             </div>
 
@@ -420,13 +438,15 @@ export default function Screen() {
             <p className="mt-4 text-[14px] leading-7" style={{ color: muted }}>
               {atLimit ? (
                 <>
-                  You have used every question in this month&rsquo;s allowance. New questions will be
-                  accepted again on <span style={{ color: ink }}>{LIMITS.month_reset_at}</span>, when
-                  the counter resets to zero. Reading past answers and citations still works.
+                  You have used every question in this month&rsquo;s allowance. New questions will
+                  be accepted again on <span style={{ color: ink }}>{LIMITS.month_reset_at}</span>,
+                  when the counter resets to zero. Reading past answers and citations still works.
                 </>
               ) : (
                 <>
-                  <span style={{ color: ink, fontVariantNumeric: "tabular-nums" }}>{remaining} left</span>{" "}
+                  <span style={{ color: ink, fontVariantNumeric: "tabular-nums" }}>
+                    {remaining} left
+                  </span>{" "}
                   before the counter resets on{" "}
                   <span style={{ color: ink }}>{LIMITS.month_reset_at}</span>.
                 </>
@@ -485,7 +505,12 @@ export default function Screen() {
                   </span>
                 </dd>
                 <div className="mt-3">
-                  <Meter labelId="byte-label" pct={bytePct} tone={brand.primaryColor} dim={loading} />
+                  <Meter
+                    labelId="byte-label"
+                    pct={bytePct}
+                    tone={brand.primaryColor}
+                    dim={loading}
+                  />
                 </div>
                 <p className="mt-3 text-[13px] leading-6" style={{ color: muted }}>
                   Original files plus their extracted passages.
@@ -777,7 +802,11 @@ export default function Screen() {
                     className="mt-0.5"
                     style={{ accentColor: brand.accentColor }}
                   />
-                  <Label htmlFor="confirm-ack" className="text-[14px] leading-6" style={{ color: ink }}>
+                  <Label
+                    htmlFor="confirm-ack"
+                    className="text-[14px] leading-6"
+                    style={{ color: ink }}
+                  >
                     I understand my documents, embeddings and conversations are destroyed and cannot
                     be recovered.
                   </Label>

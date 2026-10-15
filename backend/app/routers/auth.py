@@ -2,7 +2,8 @@
 the forgotten-password reset flow (`RAGCD78C25-10-1`).
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
@@ -44,6 +45,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 VERIFY_TOKEN_TTL_HOURS = 24
 RESET_TOKEN_TTL_HOURS = 1
+
+DbSession = Annotated[Session, Depends(get_db)]
 
 
 def _client_ip(request: Request) -> str:
@@ -89,7 +92,7 @@ def _issue_verification_token(db: Session, user: User) -> str:
         user_id=user.id,
         purpose="verify_email",
         token_hash=hash_token(raw_token),
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS),
+        expires_at=datetime.now(UTC) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS),
     )
     db.add(token)
     db.commit()
@@ -97,15 +100,16 @@ def _issue_verification_token(db: Session, user: User) -> str:
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
-async def signup(
-    payload: SignupRequest, request: Request, db: Session = Depends(get_db)
-) -> SignupResponse:
+async def signup(payload: SignupRequest, request: Request, db: DbSession) -> SignupResponse:
     ip = _client_ip(request)
 
     if not check_and_increment_rate_limit(f"signup_rl:{ip}"):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"code": "rate_limited", "message": "Too many signup attempts. Try again later."},
+            detail={
+                "code": "rate_limited",
+                "message": "Too many signup attempts. Try again later.",
+            },
         )
 
     if not await verify_turnstile(payload.turnstile_token, ip):
@@ -132,7 +136,7 @@ async def signup(
 
 @router.post("/verify", response_model=VerifyResponse)
 async def verify_email(
-    payload: VerifyRequest, response: Response, db: Session = Depends(get_db)
+    payload: VerifyRequest, response: Response, db: DbSession
 ) -> VerifyResponse:
     token_hash = hash_token(payload.token)
     record = (
@@ -145,15 +149,15 @@ async def verify_email(
 
     expires_at = record.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(UTC):
         raise _invalid_token_error()
 
     user = db.query(User).filter(User.id == record.user_id).first()
     if user is None:
         raise _invalid_token_error()
 
-    record.used_at = datetime.now(timezone.utc)
+    record.used_at = datetime.now(UTC)
     user.email_verified = True
     db.commit()
 
@@ -163,7 +167,7 @@ async def verify_email(
 
 
 @router.post("/verify/resend", response_model=ResendResponse)
-async def resend_verification(payload: ResendRequest, db: Session = Depends(get_db)) -> ResendResponse:
+async def resend_verification(payload: ResendRequest, db: DbSession) -> ResendResponse:
     user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
     if user is not None and not user.email_verified:
         raw_token = _issue_verification_token(db, user)
@@ -173,9 +177,7 @@ async def resend_verification(payload: ResendRequest, db: Session = Depends(get_
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(
-    payload: LoginRequest, response: Response, db: Session = Depends(get_db)
-) -> LoginResponse:
+async def login(payload: LoginRequest, response: Response, db: DbSession) -> LoginResponse:
     user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
 
     # Hash against a dummy value when there is no account at all, so an
@@ -218,7 +220,7 @@ async def logout(request: Request, response: Response) -> LogoutResponse:
 
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 async def forgot_password(
-    payload: ForgotPasswordRequest, db: Session = Depends(get_db)
+    payload: ForgotPasswordRequest, db: DbSession
 ) -> ForgotPasswordResponse:
     user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
     if user is not None:
@@ -227,7 +229,7 @@ async def forgot_password(
             user_id=user.id,
             purpose="reset_password",
             token_hash=hash_token(raw_token),
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=RESET_TOKEN_TTL_HOURS),
+            expires_at=datetime.now(UTC) + timedelta(hours=RESET_TOKEN_TTL_HOURS),
         )
         db.add(token)
         db.commit()
@@ -237,9 +239,7 @@ async def forgot_password(
 
 
 @router.post("/reset-password", response_model=ResetPasswordResponse)
-async def reset_password(
-    payload: ResetPasswordRequest, db: Session = Depends(get_db)
-) -> ResetPasswordResponse:
+async def reset_password(payload: ResetPasswordRequest, db: DbSession) -> ResetPasswordResponse:
     token_hash = hash_token(payload.token)
     record = (
         db.query(EmailToken)
@@ -251,8 +251,8 @@ async def reset_password(
 
     expires_at = record.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(UTC):
         raise _invalid_reset_token_error()
 
     user = db.query(User).filter(User.id == record.user_id).first()
@@ -260,7 +260,7 @@ async def reset_password(
         raise _invalid_reset_token_error()
 
     user.password_hash = hash_password(payload.password)
-    record.used_at = datetime.now(timezone.utc)
+    record.used_at = datetime.now(UTC)
     db.commit()
 
     return ResetPasswordResponse()

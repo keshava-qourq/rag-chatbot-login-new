@@ -12,7 +12,8 @@ import os
 import secrets
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 import httpx
 from fastapi import Depends, HTTPException, Request, Response, status
@@ -54,7 +55,7 @@ def verify_password_timing_safe(password: str, password_hash: str | None) -> boo
 
 def create_session_token(user_id: str) -> str:
     ttl = int(os.getenv("SESSION_TTL_SECONDS", "604800"))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "iat": now,
@@ -288,7 +289,10 @@ def send_password_reset_email(to_email: str, raw_token: str) -> None:
     SendGridAPIClient(api_key).send(message)
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+DbSession = Annotated[Session, Depends(get_db)]
+
+
+def get_current_user(request: Request, db: DbSession) -> User:
     """Resolve the session cookie into a `User`, or 401.
 
     Shared by any route that needs "signed in". Rejects a cookie whose
@@ -320,7 +324,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-def require_verified_user(user: User = Depends(get_current_user)) -> User:
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_verified_user(user: CurrentUser) -> User:
     """Gate for document and message actions: 403 with a machine-readable
     code the client maps to a 'verify your email first' prompt."""
     if not user.email_verified:
