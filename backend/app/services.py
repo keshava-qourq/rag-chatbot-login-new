@@ -1,15 +1,22 @@
 """The backing services this application is configured to reach.
 
-Each entry maps a service to the environment variable that addresses it. The value
-comes from docker-compose.yml through .env.example, so the health check reports
-what the running deployment can actually reach.
+Each entry maps an architecture component to the environment variable that
+turns it on. `REDIS_URL` ships with docker-compose.yml through .env.example;
+the rest are the SaaS keys the product owner has not set yet. A feature reads
+its own key at the point of use and reports itself disabled when it is empty
+rather than failing the whole app at startup -- this dict is what the health
+check uses to surface that same state for the deployment as a whole.
 """
 
 import os
 
 SERVICES = {
-    "redis-queue": "REDIS_URL",
     "redis": "REDIS_URL",
+    "object_store": "S3_BUCKET",
+    "gemini": "GEMINI_API_KEY",
+    "email": "SENDGRID_API_KEY",
+    "turnstile": "TURNSTILE_SECRET_KEY",
+    "payments": "STRIPE_SECRET_KEY",
 }
 
 

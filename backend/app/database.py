@@ -10,7 +10,7 @@ the real thing when it exists; nothing else has to change.
 import os
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db")
@@ -34,3 +34,18 @@ def get_db() -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+def ensure_pgvector_extension() -> None:
+    """Enable the `pgvector` extension the architecture's `chunks.embedding`
+    column needs, when the configured database is actually Postgres.
+
+    A no-op against the SQLite fallback above (and against any Postgres role
+    that lacks permission to create extensions, where the deployment is
+    expected to have enabled it already) -- it only ever helps, never blocks
+    startup.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

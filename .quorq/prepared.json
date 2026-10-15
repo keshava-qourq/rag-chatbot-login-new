@@ -1,0 +1,143 @@
+{
+  "architecture_npm": [
+    "@marsidev/react-turnstile",
+    "@tanstack/react-query",
+    "react-markdown"
+  ],
+  "key": {
+    "app_design_id": "4fbe6816-1cf8-4020-8e04-ab86f5c07e16",
+    "app_design_version": 1,
+    "architecture_document_id": "aafbc68d-b50d-4866-93eb-40f56df33eac",
+    "architecture_version": 1
+  },
+  "outcome": "prepared",
+  "packages": [
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "pypdf",
+      "status": "unverified",
+      "version": ">=4.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "python-docx",
+      "status": "unverified",
+      "version": ">=1.1"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "google-generativeai",
+      "status": "unverified",
+      "version": ""
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "pgvector",
+      "status": "unverified",
+      "version": ">=0.3"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "boto3",
+      "status": "unverified",
+      "version": ">=1.34"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "arq",
+      "status": "unverified",
+      "version": ">=0.26"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "redis",
+      "status": "unverified",
+      "version": ">=5.0"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "sendgrid",
+      "status": "unverified",
+      "version": ">=6.11"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "passlib[bcrypt]",
+      "status": "unverified",
+      "version": ">=1.7"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "python-jose[cryptography]",
+      "status": "unverified",
+      "version": ">=3.3"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "python-multipart",
+      "status": "unverified",
+      "version": ">=0.0.9"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "email-validator",
+      "status": "unverified",
+      "version": ">=2.1"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "already provided by the scaffold",
+      "name": "httpx",
+      "status": "skipped",
+      "version": ">=0.27"
+    },
+    {
+      "ecosystem": "pypi",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "sse-starlette",
+      "status": "unverified",
+      "version": ">=2.1"
+    },
+    {
+      "ecosystem": "npm",
+      "error": "already provided by the scaffold",
+      "name": "react-router-dom",
+      "status": "skipped",
+      "version": ">=6"
+    },
+    {
+      "ecosystem": "npm",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "@tanstack/react-query",
+      "status": "unverified",
+      "version": ">=5"
+    },
+    {
+      "ecosystem": "npm",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "@marsidev/react-turnstile",
+      "status": "unverified",
+      "version": ""
+    },
+    {
+      "ecosystem": "npm",
+      "error": "Install could not run: Docker could not run the command: Unable to find image 'quorq-dev-sandbox:local' locally",
+      "name": "react-markdown",
+      "status": "unverified",
+      "version": ">=9"
+    }
+  ],
+  "prepared_by_run": "a2189eb6-b2d8-4f54-b298-cec9d3c526cc"
+}
